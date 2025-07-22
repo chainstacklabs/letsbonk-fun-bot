@@ -1,0 +1,6 @@
+{
+    "python.defaultInterpreterPath": "./src/.venv/bin/python",
+    "python.analysis.extraPaths": ["./src", "./python-examples"],
+    "rust-analyzer.linkedProjects": ["./rust-examples/Cargo.toml"],
+    "typescript.preferences.includePackageJsonAutoImports": "auto"
+}
