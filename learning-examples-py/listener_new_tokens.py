@@ -48,6 +48,7 @@ class IDLParser:
             self.idl = json.load(f)
         self._build_instruction_map()
         self._build_type_map()
+        self._calculate_instruction_sizes()
     
     def _build_instruction_map(self):
         """Build a map of discriminators to instruction definitions."""
@@ -62,6 +63,97 @@ class IDLParser:
         for type_def in self.idl.get('types', []):
             self.types[type_def['name']] = type_def
     
+    def _calculate_instruction_sizes(self):
+        """Calculate minimum data sizes for each instruction."""
+        self.instruction_min_sizes = {}
+        for discriminator, instruction in self.instructions.items():
+            try:
+                min_size = 8  # discriminator size
+                for arg in instruction.get('args', []):
+                    min_size += self._calculate_type_min_size(arg['type'])
+                self.instruction_min_sizes[discriminator] = min_size
+                # Only show size for initialize instruction to reduce noise
+                if instruction['name'] == 'initialize':
+                    print(f"📏 Initialize instruction min size: {min_size} bytes")
+            except Exception as e:
+                print(f"⚠️  Could not calculate size for {instruction['name']}: {e}")
+                self.instruction_min_sizes[discriminator] = 8  # Just discriminator
+    
+    def _calculate_type_min_size(self, type_def) -> int:
+        """Calculate minimum size in bytes for a type definition."""
+        if isinstance(type_def, str):
+            return self._get_primitive_size(type_def)
+        elif isinstance(type_def, dict):
+            if 'defined' in type_def:
+                # Handle both old and new IDL format
+                if isinstance(type_def['defined'], dict):
+                    return self._calculate_defined_type_min_size(type_def['defined']['name'])
+                else:
+                    return self._calculate_defined_type_min_size(type_def['defined'])
+            else:
+                raise ValueError(f"Unknown type definition: {type_def}")
+        else:
+            raise ValueError(f"Invalid type definition: {type_def}")
+    
+    def _get_primitive_size(self, type_name: str) -> int:
+        """Get size in bytes for primitive types."""
+        sizes = {
+            'u8': 1,
+            'u16': 2,
+            'u32': 4,
+            'u64': 8,
+            'i8': 1,
+            'i16': 2,
+            'i32': 4,
+            'i64': 8,
+            'bool': 1,
+            'pubkey': 32,
+            'string': 4,  # minimum for length prefix, actual string can be longer
+        }
+        return sizes.get(type_name, 0)
+    
+    def _calculate_defined_type_min_size(self, type_name: str) -> int:
+        """Calculate minimum size for user-defined types."""
+        if type_name not in self.types:
+            raise ValueError(f"Unknown type: {type_name}")
+        
+        type_def = self.types[type_name]
+        
+        if type_def['type']['kind'] == 'struct':
+            total_size = 0
+            for field in type_def['type']['fields']:
+                total_size += self._calculate_type_min_size(field['type'])
+            return total_size
+        
+        elif type_def['type']['kind'] == 'enum':
+            # Enum has 1 byte discriminator + smallest variant size
+            min_variant_size = float('inf')
+            for variant in type_def['type']['variants']:
+                variant_size = 0
+                for field in variant.get('fields', []):
+                    variant_size += self._calculate_type_min_size(field['type'])
+                min_variant_size = min(min_variant_size, variant_size)
+            
+            return 1 + (0 if min_variant_size == float('inf') else min_variant_size)
+        
+        else:
+            raise ValueError(f"Unsupported type kind: {type_def['type']['kind']}")
+    
+    def validate_instruction_data_length(self, ix_data: bytes, discriminator: bytes) -> bool:
+        """Validate that instruction data meets minimum length requirements."""
+        if discriminator not in self.instruction_min_sizes:
+            return True  # Allow if we don't know the expected size
+        
+        expected_min_size = self.instruction_min_sizes[discriminator]
+        actual_size = len(ix_data)
+        
+        if actual_size < expected_min_size:
+            instruction_name = self.instructions[discriminator]['name']
+            print(f"⚠️  Short {instruction_name} data ({actual_size}/{expected_min_size}B) - likely not token creation")
+            return False
+        
+        return True
+    
     def decode_instruction(self, ix_data: bytes, keys: list, accounts: list) -> Optional[Dict[str, Any]]:
         """Decode instruction data using IDL definitions."""
         if len(ix_data) < 8:
@@ -69,6 +161,10 @@ class IDLParser:
         
         discriminator = ix_data[:8]
         if discriminator not in self.instructions:
+            return None
+        
+        # Validate instruction data length
+        if not self.validate_instruction_data_length(ix_data, discriminator):
             return None
         
         instruction = self.instructions[discriminator]
@@ -86,7 +182,7 @@ class IDLParser:
                 value, decode_offset = self._decode_type(data, decode_offset, arg['type'])
                 args[arg['name']] = value
             except Exception as e:
-                print(f"Error decoding arg {arg['name']}: {e}")
+                print(f"❌ Decode error in {arg['name']}: {e}")
                 return None
         
         # Extract account information
@@ -116,7 +212,11 @@ class IDLParser:
             return self._decode_primitive(data, offset, type_def)
         elif isinstance(type_def, dict):
             if 'defined' in type_def:
-                return self._decode_defined_type(data, offset, type_def['defined']['name'])
+                # Handle both old and new IDL format
+                if isinstance(type_def['defined'], dict):
+                    return self._decode_defined_type(data, offset, type_def['defined']['name'])
+                else:
+                    return self._decode_defined_type(data, offset, type_def['defined'])
             else:
                 raise ValueError(f"Unknown type definition: {type_def}")
         else:
@@ -149,12 +249,36 @@ class IDLParser:
             raise ValueError(f"Unknown type: {type_name}")
         
         type_def = self.types[type_name]
+        
         if type_def['type']['kind'] == 'struct':
             struct_data = {}
             for field in type_def['type']['fields']:
                 value, offset = self._decode_type(data, offset, field['type'])
                 struct_data[field['name']] = value
             return struct_data, offset
+        
+        elif type_def['type']['kind'] == 'enum':
+            # Read the discriminator (u8) to determine which variant
+            if offset >= len(data):
+                raise ValueError(f"Not enough data for enum discriminator at offset {offset}")
+            
+            variant_index = struct.unpack_from('<B', data, offset)[0]
+            offset += 1
+            
+            variants = type_def['type']['variants']
+            if variant_index >= len(variants):
+                raise ValueError(f"Invalid enum variant index {variant_index} for type {type_name}")
+            
+            variant = variants[variant_index]
+            variant_data = {"variant": variant['name']}
+            
+            # Decode variant fields if any
+            for field in variant.get('fields', []):
+                value, offset = self._decode_type(data, offset, field['type'])
+                variant_data[field['name']] = value
+            
+            return variant_data, offset
+        
         else:
             raise ValueError(f"Unsupported type kind: {type_def['type']['kind']}")
 
@@ -179,31 +303,30 @@ def create_subscription_request():
     """Create a subscription request for LetsBonk transactions."""
     request = geyser_pb2.SubscribeRequest()
     # Monitor transactions that include both Raydium LaunchLab and LetsBonk Platform Config
-    request.transactions["letsbonk_filter"].account_include.append(str(RAYDIUM_LAUNCHLAB_ID))
-    request.transactions["letsbonk_filter"].account_include.append(str(LETSBONK_PLATFORM_CONFIG_ID))
+    request.transactions["letsbonk_filter"].account_required.append(str(RAYDIUM_LAUNCHLAB_ID))
+    request.transactions["letsbonk_filter"].account_required.append(str(LETSBONK_PLATFORM_CONFIG_ID))
     request.transactions["letsbonk_filter"].failed = False
     request.commitment = geyser_pb2.CommitmentLevel.PROCESSED
     return request
 
 
 def print_token_info(decoded_data: Dict[str, Any], signature: str):
-    """Print formatted token information."""
+    """Print formatted token information in a compact format."""
     if 'args' not in decoded_data or 'base_mint_param' not in decoded_data['args']:
-        print("⚠️  Could not extract token information from transaction")
+        print("⚠️  Could not extract token information")
         return
     
     mint_params = decoded_data['args']['base_mint_param']
     accounts = decoded_data['accounts']
     
-    print("\n🚀 New LetsBonk token detected!")
-    print(f"Name: {mint_params.get('name', 'N/A')} | Symbol: {mint_params.get('symbol', 'N/A')}")
-    print(f"Decimals: {mint_params.get('decimals', 'N/A')}")
-    print(f"URI: {mint_params.get('uri', 'N/A')}")
-    print(f"Creator: {accounts.get('creator', 'N/A')}")
-    print(f"Pool State: {accounts.get('pool_state', 'N/A')}")
-    print(f"Base Mint: {accounts.get('base_mint', 'N/A')}")
-    print(f"Quote Mint: {accounts.get('quote_mint', 'N/A')}")
-    print(f"Signature: {signature}")
+    print(f"\n🚀 NEW TOKEN: {mint_params.get('name', 'N/A')} ({mint_params.get('symbol', 'N/A')})")
+    print(f"   📄 {signature}")
+    print(f"   🏗️  Creator: {accounts.get('creator', 'N/A')[:8]}...")
+    print(f"   🪙 Base Mint: {accounts.get('base_mint', 'N/A')[:8]}...")
+    print(f"   💰 Pool: {accounts.get('pool_state', 'N/A')[:8]}...")
+    if mint_params.get('uri'):
+        print(f"   🔗 Metadata: {mint_params['uri']}")
+    print("   " + "="*60)
 
 
 async def monitor_letsbonk():
@@ -239,18 +362,24 @@ async def monitor_letsbonk():
             continue
         
         # Check each instruction in the transaction
-        for ix in msg.instructions:
+        for ix_idx, ix in enumerate(msg.instructions):
             if not ix.data.startswith(INITIALIZE_DISCRIMINATOR):
                 continue
             
-            # Get transaction signature first
+            # Get transaction signature
             signature = base58.b58encode(bytes(update.transaction.transaction.signature)).decode()
-            print(f"🔍 Detected initialize transaction: {signature}")
+            
+            # Validate basic instruction data length
+            if len(ix.data) < 8:
+                print(f"⚠️  Short instruction data - likely not token creation | {signature}")
+                continue
             
             # Decode the instruction using IDL
             decoded_data = parser.decode_instruction(ix.data, msg.account_keys, ix.accounts)
             if decoded_data and decoded_data['instruction_name'] == 'initialize':
                 print_token_info(decoded_data, signature)
+            elif not decoded_data:
+                print(f"⚠️  Failed to decode - likely not token creation | {signature}")
 
 
 if __name__ == "__main__":
