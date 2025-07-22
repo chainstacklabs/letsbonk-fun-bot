@@ -1,0 +1,14 @@
+[project]
+name = "bonk-fun-bot"
+version = "0.1.0"
+description = "Trading bot for trading meme coins on LetsBonk Fun"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "base58>=2.1.1",
+    "dotenv>=0.9.9",
+    "grpcio>=1.73.1",
+    "grpcio-tools>=1.73.1",
+    "python-dotenv>=1.1.1",
+    "solders>=0.26.0",
+]
