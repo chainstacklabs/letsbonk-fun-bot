@@ -22,6 +22,10 @@ Raydium LaunchLab
 LanMV9sAd7wArD4vJFi2qDdfnVhFxYSUg6eADduJ3uj
 https://solscan.io/account/LanMV9sAd7wArD4vJFi2qDdfnVhFxYSUg6eADduJ3uj
 
+Programm triggering migration:
+RAYpQbFNq9i3mu6cKpTKKRwwHFDeK5AuZz8xvxUrCgw
+https://solscan.io/account/RAYpQbFNq9i3mu6cKpTKKRwwHFDeK5AuZz8xvxUrCgw
+
 Raydium CPMM:
 CPMMoo8L3F4NbTegBCKVNunggL7H1ZpdTHKxQB5qKP1C
 https://solscan.io/account/CPMMoo8L3F4NbTegBCKVNunggL7H1ZpdTHKxQB5qKP1C
