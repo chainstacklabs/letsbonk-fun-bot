@@ -306,6 +306,7 @@ def create_subscription_request():
     request.transactions["letsbonk_filter"].account_required.append(str(RAYDIUM_LAUNCHLAB_ID))
     request.transactions["letsbonk_filter"].account_required.append(str(LETSBONK_PLATFORM_CONFIG_ID))
     request.transactions["letsbonk_filter"].failed = False
+    request.transactions["letsbonk_filter"].vote = False
     request.commitment = geyser_pb2.CommitmentLevel.PROCESSED
     return request
 
@@ -320,12 +321,12 @@ def print_token_info(decoded_data: Dict[str, Any], signature: str):
     accounts = decoded_data['accounts']
     
     print(f"\n🚀 NEW TOKEN: {mint_params.get('name', 'N/A')} ({mint_params.get('symbol', 'N/A')})")
-    print(f"   📄 {signature}")
-    print(f"   🏗️  Creator: {accounts.get('creator', 'N/A')[:8]}...")
-    print(f"   🪙 Base Mint: {accounts.get('base_mint', 'N/A')[:8]}...")
-    print(f"   💰 Pool: {accounts.get('pool_state', 'N/A')[:8]}...")
+    print(f"   Signature: {signature}")
+    print(f"   Creator: {accounts.get('creator', 'N/A')}")
+    print(f"   Base Mint: {accounts.get('base_mint', 'N/A')}")
+    print(f"   Pool: {accounts.get('pool_state', 'N/A')}")
     if mint_params.get('uri'):
-        print(f"   🔗 Metadata: {mint_params['uri']}")
+        print(f"   Metadata: {mint_params['uri']}")
     print("   " + "="*60)
 
 
@@ -345,8 +346,8 @@ async def monitor_letsbonk():
     
     async for update in stub.Subscribe(iter([request])):
         # Skip non-transaction updates
-        if not update.HasField("transaction"):
-            continue
+        #if not update.HasField("transaction"):
+        #    continue
         
         tx = update.transaction.transaction.transaction
         msg = getattr(tx, "message", None)
@@ -354,19 +355,18 @@ async def monitor_letsbonk():
             continue
         
         # Check if transaction contains both required accounts
-        account_keys_str = [base58.b58encode(key).decode() for key in msg.account_keys]
-        has_raydium = str(RAYDIUM_LAUNCHLAB_ID) in account_keys_str
-        has_letsbonk = str(LETSBONK_PLATFORM_CONFIG_ID) in account_keys_str
+        #account_keys_str = [base58.b58encode(key).decode() for key in msg.account_keys]
+        #has_raydium = str(RAYDIUM_LAUNCHLAB_ID) in account_keys_str
+        #has_letsbonk = str(LETSBONK_PLATFORM_CONFIG_ID) in account_keys_str
         
-        if not (has_raydium and has_letsbonk):
-            continue
+        #if not (has_raydium and has_letsbonk):
+        #    continue
         
         # Check each instruction in the transaction
-        for ix_idx, ix in enumerate(msg.instructions):
+        for _, ix in enumerate(msg.instructions):
             if not ix.data.startswith(INITIALIZE_DISCRIMINATOR):
                 continue
-            
-            # Get transaction signature
+
             signature = base58.b58encode(bytes(update.transaction.transaction.signature)).decode()
             
             # Validate basic instruction data length

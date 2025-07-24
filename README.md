@@ -49,6 +49,9 @@ Raydium LaunchLab IDL:
 https://solscan.io/account/LanMV9sAd7wArD4vJFi2qDdfnVhFxYSUg6eADduJ3uj#anchorProgramIdl
 
 Instructions:
+
 initialize
+
 migrate_to_cpswap
+
 migrate_to_amm
