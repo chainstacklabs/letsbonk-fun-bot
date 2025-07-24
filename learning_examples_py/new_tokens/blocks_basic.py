@@ -272,9 +272,4 @@ async def monitor_letsbonk_blocks():
 
 
 if __name__ == "__main__":
-    if not WSS_ENDPOINT:
-        print("Error: SOLANA_NODE_WSS_ENDPOINT or SOLANA_WSS_ENDPOINT environment variable not set")
-        print("Please set it in your .env file, e.g.: SOLANA_NODE_WSS_ENDPOINT=wss://api.mainnet-beta.solana.com/")
-        exit(1)
-    
     asyncio.run(monitor_letsbonk_blocks())
