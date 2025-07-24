@@ -21,7 +21,7 @@ import grpc
 from dotenv import load_dotenv
 from solders.pubkey import Pubkey
 
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from generated import geyser_pb2, geyser_pb2_grpc
 
 
@@ -210,7 +210,6 @@ async def monitor_letsbonk():
         if msg is None:
             continue
         
-        # Check each instruction in the transaction
         for _, ix in enumerate(msg.instructions):
             if not ix.data.startswith(INITIALIZE_DISCRIMINATOR):
                 continue
