@@ -11,4 +11,5 @@ dependencies = [
     "grpcio-tools>=1.73.1",
     "python-dotenv>=1.1.1",
     "solders>=0.26.0",
+    "websockets>=13.0",
 ]
