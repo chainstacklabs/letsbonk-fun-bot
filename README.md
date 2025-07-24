@@ -1,5 +1,13 @@
 https://letsbonk.fun/advanced
 
+## ⚠️ Development Status
+
+**This repository is under active development.** Our roadmap includes developing a trading bot similar to [pump-fun-bot](https://github.com/chainstacklabs/pump-fun-bot/tree/main) but specifically designed for letsbonk.fun platform, along with comprehensive learning examples.
+
+**⚠️ NOT FOR PRODUCTION:** This code is for learning purposes only. We assume no responsibility for the code or its usage. Modify for your needs and learn from it (examples, issues, and PRs contain valuable insights).
+
+---
+
 # NEW TOKEN
 
 Let's bonk token launch transaction:
