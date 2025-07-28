@@ -34,6 +34,12 @@ from solders.pubkey import Pubkey
 from solders.system_program import CreateAccountWithSeedParams, create_account_with_seed
 from solders.transaction import VersionedTransaction
 
+from idl_parser import load_idl_parser
+
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Initialize IDL parser for Raydium LaunchLab with verbose mode for debugging
+IDL_PARSER = load_idl_parser("idl/raydium_launchlab.json", verbose=True)
+
 load_dotenv()
 
 TOKEN_MINT_ADDRESS = Pubkey.from_string("CKyveMBB55WkfZrELaUWnA3R74RTQEmLYhi8m3v4bonk")
@@ -122,37 +128,51 @@ async def derive_pool_state_for_token(base_token_mint: Pubkey) -> Optional[Pubke
     pool_state_pda, _ = Pubkey.find_program_address(seeds, RAYDIUM_LAUNCHLAB_PROGRAM_ID)
     return pool_state_pda
 
-async def get_pool_accounts(client: AsyncClient, pool_state: Pubkey) -> dict:
+def decode_pool_state(account_data: bytes) -> Optional[dict]:
     """
-    Get the vault accounts for a pool from its pool state account.
+    Decode pool state account data using the IDL parser.
     
-    Searches for the vault addresses in the binary data.
+    Args:
+        account_data: Raw account data from the pool state account
+        
+    Returns:
+        Dictionary containing decoded pool state data, or None if decoding fails
+    """
+    try:
+        result = IDL_PARSER.decode_account_data(account_data, "PoolState", skip_discriminator=True)
+        if result:
+            return result
+            
+        return None
+        
+    except Exception as e:
+        print(f"Error decoding pool state: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
+
+
+async def get_pool_state_data(client: AsyncClient, pool_state: Pubkey) -> Optional[dict]:
+    """
+    Get and decode the pool state account data.
     
     Args:
         client: Solana RPC client
         pool_state: The pool state account address
         
     Returns:
-        Dictionary containing base_vault and quote_vault addresses
+        Dictionary containing decoded pool state data, or None if error
     """
     try:
         account_info = await client.get_account_info(pool_state)
         if not account_info.value:
-            raise ValueError("Pool state account not found")
+            print("Pool state account not found")
+            return None
         
-        base_vault_offset = 269
-        quote_vault_offset = 301
-        data = account_info.value.data
+        return decode_pool_state(account_info.value.data)
         
-        base_vault = Pubkey(data[base_vault_offset:base_vault_offset + 32])
-        quote_vault = Pubkey(data[quote_vault_offset:quote_vault_offset + 32])
-        
-        return {
-            "base_vault": base_vault,
-            "quote_vault": quote_vault
-        }
     except Exception as e:
-        print(f"Error getting pool accounts: {e}")
+        print(f"Error getting pool state data: {e}")
         return None
 
 
@@ -321,21 +341,18 @@ def get_user_base_token_account(payer: Pubkey, base_mint: Pubkey) -> Pubkey:
     return get_associated_token_address(payer, base_mint)
 
 
-async def calculate_minimum_amount_out(
-    client: AsyncClient,
-    pool_state: Pubkey,
+def calculate_minimum_amount_out_from_pool_state(
+    pool_state_data: dict,
     amount_in: int,
     slippage_tolerance: float
 ) -> int:
     """
-    Calculate the minimum amount out based on current pool state and slippage tolerance.
+    Calculate the minimum amount out based on pool state data and slippage tolerance.
     
-    This is a simplified calculation. In production, you should implement proper
-    bonding curve calculations based on the pool's current state.
+    Uses the actual pool reserves to calculate expected output using constant product formula.
     
     Args:
-        client: Solana RPC client
-        pool_state: The pool state account
+        pool_state_data: Decoded pool state data containing reserves
         amount_in: Amount of quote tokens being swapped in (in lamports)
         slippage_tolerance: Slippage tolerance as a decimal (0.25 = 25%)
         
@@ -343,26 +360,39 @@ async def calculate_minimum_amount_out(
         Minimum amount of base tokens to receive
     """
     try:
-        # This is a simplified approach. In production, you should:
-        # 1. Read the pool state data to get current reserves
-        # 2. Calculate the expected output using the bonding curve formula
-        # 3. Apply slippage tolerance
+        # Extract pool reserves from decoded state
+        virtual_base = pool_state_data["virtual_base"]
+        virtual_quote = pool_state_data["virtual_quote"]
+        real_base = pool_state_data["real_base"]
+        real_quote = pool_state_data["real_quote"]
         
-        # For now, we'll use a rough estimation based on the example transaction
-        # From Solscan: 0.99 SOL → 16,057,173.389899 tokens
-        estimated_tokens_per_sol = 16_057_173_389_899 / 0.99  # tokens per SOL
-        sol_amount = amount_in / LAMPORTS_PER_SOL
-        expected_output = int(sol_amount * estimated_tokens_per_sol)
+        print("Pool State:")
+        print(f"  Virtual Base: {virtual_base:,}")
+        print(f"  Virtual Quote: {virtual_quote:,}")
+        print(f"  Real Base: {real_base:,}")
+        print(f"  Real Quote: {real_quote:,}")
+        
+        # Use virtual reserves for bonding curve calculation
+        # This follows the constant product AMM formula: x * y = k
+        # amount_out = (amount_in * virtual_base) / (virtual_quote + amount_in)
+        
+        # Calculate expected output using constant product formula
+        numerator = amount_in * virtual_base
+        denominator = virtual_quote + amount_in
+        expected_output = numerator // denominator
+        
+        # Apply slippage tolerance
         minimum_with_slippage = int(expected_output * (1 - slippage_tolerance))
         
-        print(f"Estimated output: {expected_output:,} tokens")
+        print(f"Amount in: {amount_in:,} lamports")
+        print(f"Expected output: {expected_output:,} tokens")
         print(f"Minimum with {slippage_tolerance*100}% slippage: {minimum_with_slippage:,} tokens")
         
         return minimum_with_slippage
+    
     except Exception as e:
-        print(f"Error calculating minimum amount out: {e}")
-        # Very conservative fallback
-        return int(amount_in * 1000)
+        print(f"Error calculating minimum amount out from pool state: {e}")
+        return None
 
 
 async def buy_exact_in(
@@ -399,22 +429,29 @@ async def buy_exact_in(
             print("Pool state not found for this token")
             return None
             
-        pool_accounts = await get_pool_accounts(client, pool_state)
-        base_vault = pool_accounts["base_vault"]
-        quote_vault = pool_accounts["quote_vault"]
+        # Get and decode pool state data using IDL parser
+        pool_state_data = await get_pool_state_data(client, pool_state)
+        if not pool_state_data:
+            print("Failed to decode pool state data")
+            return None
+        
+        # Extract vault addresses from decoded pool state (convert from base58 strings to Pubkey objects)
+        base_vault = Pubkey.from_string(pool_state_data["base_vault"])
+        quote_vault = Pubkey.from_string(pool_state_data["quote_vault"])
         
         print(f"Found pool state: {pool_state}")
         print(f"Base vault: {base_vault}")
         print(f"Quote vault: {quote_vault}")
+        print(f"Pool status: {pool_state_data['status']}")
         
         # Derive necessary PDAs
         authority = derive_authority_pda()
         event_authority = derive_event_authority_pda()
         
-        # Calculate amounts
+        # Calculate amounts using pool state data
         amount_in = int(amount_in_sol * LAMPORTS_PER_SOL)
-        minimum_amount_out = await calculate_minimum_amount_out(
-            client, pool_state, amount_in, slippage_tolerance
+        minimum_amount_out = calculate_minimum_amount_out_from_pool_state(
+            pool_state_data, amount_in, slippage_tolerance
         )
         
         print(f"Amount in: {amount_in} lamports ({amount_in_sol} SOL)")

@@ -69,6 +69,12 @@ class IDLParser:
                     return self._calculate_defined_type_min_size(type_def['defined']['name'])
                 else:
                     return self._calculate_defined_type_min_size(type_def['defined'])
+            elif 'array' in type_def:
+                # Handle array types like {'array': ['u64', 8]}
+                element_type = type_def['array'][0]
+                array_length = type_def['array'][1]
+                element_size = self._calculate_type_min_size(element_type)
+                return element_size * array_length
             else:
                 raise ValueError(f"Unknown type definition: {type_def}")
         else:
@@ -206,10 +212,28 @@ class IDLParser:
                     return self._decode_defined_type(data, offset, type_def['defined']['name'])
                 else:
                     return self._decode_defined_type(data, offset, type_def['defined'])
+            elif 'array' in type_def:
+                # Handle array types like {'array': ['u64', 8]}
+                return self._decode_array(data, offset, type_def['array'])
             else:
                 raise ValueError(f"Unknown type definition: {type_def}")
         else:
             raise ValueError(f"Invalid type definition: {type_def}")
+
+    def _decode_array(self, data: bytes, offset: int, array_def) -> tuple:
+        """Decode array types."""
+        if len(array_def) != 2:
+            raise ValueError(f"Invalid array definition: {array_def}")
+        
+        element_type = array_def[0]
+        array_length = array_def[1]
+        
+        array_data = []
+        for _ in range(array_length):
+            value, offset = self._decode_type(data, offset, element_type)
+            array_data.append(value)
+        
+        return array_data, offset
     
     def _decode_primitive(self, data: bytes, offset: int, type_name: str) -> tuple:
         """Decode primitive types."""
@@ -270,7 +294,43 @@ class IDLParser:
         
         else:
             raise ValueError(f"Unsupported type kind: {type_def['type']['kind']}")
-
+    
+    def decode_account_data(self, account_data: bytes, account_type_name: str, skip_discriminator: bool = True) -> Optional[Dict[str, Any]]:
+        """
+        Decode account data using a specific account type from the IDL.
+        
+        Args:
+            account_data: Raw account data bytes
+            account_type_name: Name of the account type in the IDL
+            skip_discriminator: Whether to skip the first 8 bytes (discriminator)
+            
+        Returns:
+            Decoded account data as a dictionary, or None if decoding fails
+        """
+        try:
+            if account_type_name not in self.types:
+                if self.verbose:
+                    print(f"Account type '{account_type_name}' not found in IDL")
+                return None
+            
+            # Some account data starts with an 8-byte discriminator, others don't
+            data = account_data
+            if skip_discriminator:
+                if len(account_data) < 8:
+                    if self.verbose:
+                        print(f"Account data too short: {len(account_data)} bytes")
+                    return None
+                data = account_data[8:]
+            
+            # Decode the struct
+            decoded_data, _ = self._decode_defined_type(data, 0, account_type_name)
+            
+            return decoded_data
+            
+        except Exception as e:
+            if self.verbose:
+                print(f"Error decoding account data for {account_type_name}: {e}")
+            return None
 
 def load_idl_parser(idl_path: str, verbose: bool = False) -> IDLParser:
     """
