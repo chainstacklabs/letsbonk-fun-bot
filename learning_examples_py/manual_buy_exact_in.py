@@ -2,11 +2,10 @@
 Manual Buy Exact In Example for Raydium LaunchLab
 
 This script demonstrates how to buy tokens using the buy_exact_in instruction
-from the Raydium LaunchLab program. It follows the IDL structure and implements
-the same transaction pattern shown in the Solscan example.
+from the Raydium LaunchLab program. It follows the IDL structure.
 
 Key features:
-- Uses buy_exact_in instruction (discriminator: [250, 234, 13, 123, 213, 156, 19, 236])
+- Uses buy_exact_in instruction
 - Implements proper account ordering as per IDL
 - Includes slippage protection with minimum_amount_out
 - Handles WSOL wrapping/unwrapping automatically
@@ -42,7 +41,7 @@ IDL_PARSER = load_idl_parser("idl/raydium_launchlab.json", verbose=True)
 
 load_dotenv()
 
-TOKEN_MINT_ADDRESS = Pubkey.from_string("CKyveMBB55WkfZrELaUWnA3R74RTQEmLYhi8m3v4bonk")
+TOKEN_MINT_ADDRESS = Pubkey.from_string("TOKEN_MINT_ADDRESS_HERE")  # Replace with actual token mint address
 
 # Configuration constants
 RPC_ENDPOINT = os.environ.get("SOLANA_NODE_RPC_ENDPOINT")
@@ -89,7 +88,7 @@ def derive_authority_pda() -> Pubkey:
     Returns:
         Pubkey: The derived authority PDA
     """
-    AUTH_SEED = b"vault_auth_seed"  # From IDL PDA seeds
+    AUTH_SEED = b"vault_auth_seed"
     authority_pda, _ = Pubkey.find_program_address(
         [AUTH_SEED],
         RAYDIUM_LAUNCHLAB_PROGRAM_ID
@@ -106,7 +105,7 @@ def derive_event_authority_pda() -> Pubkey:
     Returns:
         Pubkey: The derived event authority PDA
     """
-    EVENT_AUTHORITY_SEED = b"__event_authority"  # From IDL PDA seeds
+    EVENT_AUTHORITY_SEED = b"__event_authority"
     event_authority_pda, _ = Pubkey.find_program_address(
         [EVENT_AUTHORITY_SEED],
         RAYDIUM_LAUNCHLAB_PROGRAM_ID
