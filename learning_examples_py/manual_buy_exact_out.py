@@ -41,7 +41,7 @@ IDL_PARSER = load_idl_parser("idl/raydium_launchlab.json", verbose=True)
 
 load_dotenv()
 
-TOKEN_MINT_ADDRESS = Pubkey.from_string("CKyveMBB55WkfZrELaUWnA3R74RTQEmLYhi8m3v4bonk")  # Replace with actual token mint address
+TOKEN_MINT_ADDRESS = Pubkey.from_string("TOKEN_MINT_ADDRESS_HERE")  # Replace with actual token mint address
 
 # Configuration constants
 RPC_ENDPOINT = os.environ.get("SOLANA_NODE_RPC_ENDPOINT")
