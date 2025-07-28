@@ -28,7 +28,7 @@ Raydium LaunchLab
 LanMV9sAd7wArD4vJFi2qDdfnVhFxYSUg6eADduJ3uj
 https://solscan.io/account/LanMV9sAd7wArD4vJFi2qDdfnVhFxYSUg6eADduJ3uj
 
-Programm triggering migration:
+Program triggering migration:
 RAYpQbFNq9i3mu6cKpTKKRwwHFDeK5AuZz8xvxUrCgw
 https://solscan.io/account/RAYpQbFNq9i3mu6cKpTKKRwwHFDeK5AuZz8xvxUrCgw
 
