@@ -41,7 +41,7 @@ IDL_PARSER = load_idl_parser("idl/raydium_launchlab.json", verbose=True)
 
 load_dotenv()
 
-TOKEN_MINT_ADDRESS = Pubkey.from_string("TOKEN_MINT_ADDRESS_HERE")  # Replace with actual token mint address
+TOKEN_MINT_ADDRESS = Pubkey.from_string("CKyveMBB55WkfZrELaUWnA3R74RTQEmLYhi8m3v4bonk")  # Replace with actual token mint address
 
 # Configuration constants
 RPC_ENDPOINT = os.environ.get("SOLANA_NODE_RPC_ENDPOINT")
@@ -113,7 +113,7 @@ def derive_event_authority_pda() -> Pubkey:
     return event_authority_pda
 
 
-async def derive_pool_state_for_token(base_token_mint: Pubkey) -> Optional[Pubkey]:
+def derive_pool_state_for_token(base_token_mint: Pubkey) -> Optional[Pubkey]:
     """
     Derive the pool state account for a given base token mint.
     
@@ -423,7 +423,7 @@ async def buy_exact_in(
     """
     try:
         print(f"Finding pool state for token: {base_token_mint}")
-        pool_state = await derive_pool_state_for_token(base_token_mint)
+        pool_state = derive_pool_state_for_token(base_token_mint)
         if not pool_state:
             print("Pool state not found for this token")
             return None

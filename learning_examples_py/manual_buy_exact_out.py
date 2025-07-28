@@ -113,7 +113,7 @@ def derive_event_authority_pda() -> Pubkey:
     return event_authority_pda
 
 
-async def derive_pool_state_for_token(base_token_mint: Pubkey) -> Optional[Pubkey]:
+def derive_pool_state_for_token(base_token_mint: Pubkey) -> Optional[Pubkey]:
     """
     Derive the pool state account for a given base token mint.
     
@@ -427,7 +427,7 @@ async def buy_exact_out(
     """
     try:
         print(f"Finding pool state for token: {base_token_mint}")
-        pool_state = await derive_pool_state_for_token(base_token_mint)
+        pool_state = derive_pool_state_for_token(base_token_mint)
         if not pool_state:
             print("Pool state not found for this token")
             return None
