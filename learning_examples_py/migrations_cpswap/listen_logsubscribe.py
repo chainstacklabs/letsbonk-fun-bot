@@ -15,7 +15,6 @@ import os
 from dotenv import load_dotenv
 from solana.rpc.async_api import AsyncClient
 from solders.pubkey import Pubkey
-from solana.rpc.async_api import AsyncClient
 from solders.signature import Signature
 import websockets
 
